@@ -7,9 +7,7 @@ with open("README.md", "r") as fh:
 setup(
     name="document_ai_agents",
     version="0.1.0",  # Update the version as needed
-    packages=find_packages(
-        exclude=["tests.*", "tests"]
-    ),
+    packages=find_packages(exclude=["tests.*", "tests"]),
     author="Youness",
     author_email="X@eY.Z",
     description="A set of re-usable AI agent for document processing ",
