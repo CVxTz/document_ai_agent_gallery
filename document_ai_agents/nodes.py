@@ -1,13 +1,16 @@
 import tempfile
 
-from langchain_core.messages import HumanMessage, SystemMessage
+import google.generativeai as genai
 from pdf2image import convert_from_bytes
 from pypdf import PdfReader
 
-from document_ai_agents.clients import llm_google_client
 from document_ai_agents.logger import logger
 from document_ai_agents.states import DocumentLayoutParsingState, LayoutElements
-from document_ai_agents.utils import ppm_to_base64_jpeg, delete_keys_recursive, replace_value_in_dict
+from document_ai_agents.utils import (
+    delete_keys_recursive,
+    replace_value_in_dict,
+)
+from document_ai_agents.clients import *
 
 
 def load_document(state: DocumentLayoutParsingState):
@@ -30,35 +33,32 @@ def extract_layout_elements(state: DocumentLayoutParsingState):
     schema = LayoutElements.model_json_schema()
     schema = replace_value_in_dict(schema.copy(), schema.copy())
     del schema["$defs"]
-    # delete_keys_recursive(schema, key_to_delete="title")
+    delete_keys_recursive(schema, key_to_delete="title")
+    delete_keys_recursive(schema, key_to_delete="default")
 
-    constrained_llm = llm_google_client.with_structured_output(schema)
+    model = genai.GenerativeModel(
+        "gemini-1.5-flash",
+        # Set the `response_mime_type` to output JSON
+        # Pass the schema object to the `response_schema` field
+        generation_config={
+            "response_mime_type": "application/json",
+            "response_schema": schema,
+        },
+    )
 
     layout_elements = []
 
     for image_page in state.pages_as_images:
         messages = [
-            SystemMessage(
-                content=f"Find and summarize all the relevant layout elements in this pdf page in the following format: "
-                f"{LayoutElements.model_json_schema()}"
-            ),
-            HumanMessage(
-                content=[
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{ppm_to_base64_jpeg(image_page)}"
-                        },
-                    },
-                    {"type": "text", "text": "Find table, figures in this image"},
-                ]
-            ),
+            f"Find and summarize all the relevant layout elements in this pdf page in the following format: "
+            f"{LayoutElements.model_json_schema()}",
+            image_page.convert("RGB"),
         ]
 
-        result: LayoutElements = constrained_llm.invoke(messages)
+        result = model.generate_content(messages)
 
         print(result)
-        layout_elements += result.layout_elements
+        # layout_elements += result.layout_elements
 
     return {"layout_elements": layout_elements}
 

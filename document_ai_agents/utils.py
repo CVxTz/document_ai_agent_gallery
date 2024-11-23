@@ -1,6 +1,5 @@
 import base64
 import io
-from functools import lru_cache
 
 import PIL.PpmImagePlugin
 
@@ -44,6 +43,7 @@ def replace_value_in_dict(item, original_schema):
             }
     else:
         return item
+
 
 def delete_keys_recursive(d, key_to_delete):
     if isinstance(d, dict):
