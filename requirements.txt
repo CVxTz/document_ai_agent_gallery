@@ -13,3 +13,4 @@ langchain-google-genai~=2.0.4
 pdf2image~=1.17.0
 pypdf~=5.1.0
 pillow~=11.0.0
+google-generativeai~=0.8.3

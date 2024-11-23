@@ -17,7 +17,7 @@ setup(
     install_requires=open(
         "requirements.txt"
     ).readlines(),  # Reads dependencies from file
-    extras_require={"dev": open("requirements_dev.txt").readlines()},
+    extras_require={"dev": open("requirements-dev.txt").readlines()},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
