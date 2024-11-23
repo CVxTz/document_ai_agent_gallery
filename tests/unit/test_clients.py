@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage
 
-from agents.clients import llm_google_client, llm_google_client_8b
+from document_ai_agents.clients import llm_google_client, llm_google_client_8b
 
 
 def test_llm_google_client():
