@@ -6,17 +6,19 @@ import PIL.Image as Image
 from pdf2image import convert_from_bytes
 from pypdf import PdfReader
 
+from document_ai_agents.image_utils import (
+    draw_bounding_box_on_image,
+    pil_image_to_base64_png,
+)
 from document_ai_agents.logger import logger
+from document_ai_agents.schema_utils import (
+    delete_keys_recursive,
+    replace_value_in_dict,
+)
 from document_ai_agents.states import (
     DetectedLayoutElements,
     DocumentLayoutParsingState,
     LayoutElement,
-)
-from document_ai_agents.utils import (
-    delete_keys_recursive,
-    draw_bounding_box_on_image,
-    ppm_to_base64_png,
-    replace_value_in_dict,
 )
 
 
@@ -25,8 +27,8 @@ def load_document(state: DocumentLayoutParsingState):
     with open(state.document_path, "rb") as f:
         with tempfile.TemporaryDirectory() as path:
             logger.info(f"Converting PDF to images using temporary directory: {path}")
-            images = convert_from_bytes(f.read(), output_folder=path)
-            images = [x.convert("RGB") for x in images]
+            images = convert_from_bytes(f.read(), output_folder=path, fmt="png")
+            images = [x for x in images]
 
             reader = PdfReader(f)
             logger.info(f"Extracting text from {len(reader.pages)} pages.")
@@ -65,7 +67,7 @@ def extract_layout_elements(state: DocumentLayoutParsingState):
             f"{DetectedLayoutElements.model_json_schema()}. "
             f"Tables should have at least two columns and at least two rows. "
             f"The coordinates should overlap with each layout item.",
-            {"mime_type": "image/png", "data": ppm_to_base64_png(image_page)},
+            {"mime_type": "image/png", "data": pil_image_to_base64_png(image_page)},
         ]
 
         result = model.generate_content(messages)
