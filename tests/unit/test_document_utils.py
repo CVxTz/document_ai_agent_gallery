@@ -1,7 +1,11 @@
-import pytest
 from pathlib import Path
-from document_ai_agents.document_utils import extract_images_from_pdf, extract_text_from_pdf
 
+import pytest
+
+from document_ai_agents.document_utils import (
+    extract_images_from_pdf,
+    extract_text_from_pdf,
+)
 
 
 @pytest.fixture
@@ -10,11 +14,15 @@ def pdf_file():
     assert docs_path.exists(), f"PDF file not found at {docs_path}"
     return str(docs_path)
 
+
 # Test for extract_images_from_pdf
 def test_extract_images_from_pdf(pdf_file):
     images = extract_images_from_pdf(pdf_file)
     assert len(images) > 0, "Expected at least one image in the PDF"
-    assert all(image.format == "PNG" for image in images), "Images should be in PNG format"
+    assert all(
+        image.format == "PNG" for image in images
+    ), "Images should be in PNG format"
+
 
 # Test for extract_text_from_pdf
 def test_extract_text_from_pdf(pdf_file):
