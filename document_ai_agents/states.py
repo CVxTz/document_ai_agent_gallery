@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class LayoutElement(BaseModel):
+class DetectedLayoutElement(BaseModel):
     caption: str
     ymin: int
     xmin: int
@@ -12,8 +12,18 @@ class LayoutElement(BaseModel):
     element_type: Literal["Table", "Figure", "Image"]
 
 
-class LayoutElements(BaseModel):
-    layout_elements: list[LayoutElement] = []
+class DetectedLayoutElements(BaseModel):
+    layout_elements: list[DetectedLayoutElement] = []
+
+
+class LayoutElement(BaseModel):
+    caption: str
+    ymin: float
+    xmin: float
+    ymax: float
+    xmax: float
+    page_number: int
+    element_type: Literal["Table", "Figure", "Image"]
 
 
 class DocumentLayoutParsingState(BaseModel):

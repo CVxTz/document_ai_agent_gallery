@@ -1,24 +1,28 @@
+import json
 import tempfile
 
 import google.generativeai as genai
+import PIL.Image as Image
 from pdf2image import convert_from_bytes
 from pypdf import PdfReader
 
-from document_ai_agents.logger import logger
-from document_ai_agents.states import DocumentLayoutParsingState, LayoutElements
+from document_ai_agents.states import (
+    DetectedLayoutElements,
+    DocumentLayoutParsingState,
+    LayoutElement,
+)
 from document_ai_agents.utils import (
     delete_keys_recursive,
+    draw_bounding_box_on_image,
     replace_value_in_dict,
 )
-from document_ai_agents.clients import *
 
 
 def load_document(state: DocumentLayoutParsingState):
-    logger.info(f"{type(state)=}")
-
     with open(state.document_path, "rb") as f:
         with tempfile.TemporaryDirectory() as path:
             images = convert_from_bytes(f.read(), output_folder=path)
+            images = [x.convert("RGB") for x in images]
 
         reader = PdfReader(f)
 
@@ -30,7 +34,7 @@ def load_document(state: DocumentLayoutParsingState):
 
 
 def extract_layout_elements(state: DocumentLayoutParsingState):
-    schema = LayoutElements.model_json_schema()
+    schema = DetectedLayoutElements.model_json_schema()
     schema = replace_value_in_dict(schema.copy(), schema.copy())
     del schema["$defs"]
     delete_keys_recursive(schema, key_to_delete="title")
@@ -48,17 +52,30 @@ def extract_layout_elements(state: DocumentLayoutParsingState):
 
     layout_elements = []
 
-    for image_page in state.pages_as_images:
+    for i, image_page in enumerate(state.pages_as_images):
         messages = [
             f"Find and summarize all the relevant layout elements in this pdf page in the following format: "
-            f"{LayoutElements.model_json_schema()}",
-            image_page.convert("RGB"),
+            f"{DetectedLayoutElements.model_json_schema()}. "
+            f"Tables should have at least two columns and at least two rows.",
+            image_page,
         ]
 
         result = model.generate_content(messages)
 
-        print(result)
-        # layout_elements += result.layout_elements
+        data = json.loads(result.text)
+
+        layout_elements += [
+            LayoutElement(
+                caption=x["caption"],
+                ymin=x["ymin"] / 1000,
+                xmin=x["xmin"] / 1000,
+                ymax=x["ymax"] / 1000,
+                xmax=x["xmax"] / 1000,
+                page_number=i,
+                element_type=x["element_type"],
+            )
+            for x in data["layout_elements"]
+        ]
 
     return {"layout_elements": layout_elements}
 
@@ -74,4 +91,19 @@ if __name__ == "__main__":
 
     result_node2 = extract_layout_elements(_state)
 
-    print(result_node2)
+    _images: list[Image] = result_node1["pages_as_images"]
+    _layout_elements: list[LayoutElement] = result_node2["layout_elements"]
+
+    for layout_element in _layout_elements:
+        draw_bounding_box_on_image(
+            image=_images[layout_element.page_number],
+            ymin=layout_element.ymin,
+            ymax=layout_element.ymax,
+            xmin=layout_element.xmin,
+            xmax=layout_element.xmax,
+            display_str_list=(layout_element.element_type,),
+        )
+
+
+    for image in _images:
+        image.show()
