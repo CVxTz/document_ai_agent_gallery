@@ -7,7 +7,7 @@ import PIL.ImageFont as ImageFont
 import PIL.PpmImagePlugin
 
 
-def ppm_to_base64_jpeg(ppm_image: PIL.PpmImagePlugin.PpmImageFile):
+def ppm_to_base64_png(ppm_image: PIL.PpmImagePlugin.PpmImageFile):
     try:
         # Convert to RGB mode if necessary
         rgb_image = ppm_image.convert("RGB")
@@ -16,7 +16,7 @@ def ppm_to_base64_jpeg(ppm_image: PIL.PpmImagePlugin.PpmImageFile):
         buffered = io.BytesIO()
 
         # Save as JPEG
-        rgb_image.save(buffered, format="JPEG")
+        rgb_image.save(buffered, format="PNG")
 
         # Encode as base64
         img_str = base64.b64encode(buffered.getvalue()).decode()

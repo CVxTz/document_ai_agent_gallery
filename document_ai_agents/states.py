@@ -1,10 +1,10 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DetectedLayoutElement(BaseModel):
-    caption: str
+    summary: str = Field(..., description="A detailed description of the item.")
     ymin: int
     xmin: int
     ymax: int
@@ -17,7 +17,7 @@ class DetectedLayoutElements(BaseModel):
 
 
 class LayoutElement(BaseModel):
-    caption: str
+    summary: str
     ymin: float
     xmin: float
     ymax: float
