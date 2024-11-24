@@ -25,6 +25,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Poppler
+        run: apt-get install poppler-utils
+
       - name: Install dependencies
         run: pip install -e .[dev]
 
