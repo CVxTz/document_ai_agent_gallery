@@ -1,9 +1,12 @@
 import json
+import operator
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import google.generativeai as genai
 from langchain_core.documents import Document
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from document_ai_agents.document_utils import extract_images_from_pdf
@@ -28,10 +31,10 @@ class LayoutElements(BaseModel):
 class DocumentLayoutParsingState(BaseModel):
     document_path: str
     pages_as_base64_png_images: list[str] = []
-    documents: list[Document] = []
+    documents: Annotated[list[Document], operator.add] = []
 
 
-class FindLayoutItems(BaseModel):
+class FindLayoutItemsInput(BaseModel):
     base64_png: str
     page_number: int
 
@@ -49,7 +52,7 @@ class DocumentParsingAgent:
                 "response_schema": layout_elements_schema,
             },
         )
-        self.agent = None
+        self.graph = None
 
     @classmethod
     def get_images(cls, state: DocumentLayoutParsingState):
@@ -63,40 +66,54 @@ class DocumentParsingAgent:
 
         return {"pages_as_base64_png_images": pages_as_base64_png_images}
 
-    def find_layout_items(self, state: DocumentLayoutParsingState):
-        documents = []
-        for i, base64_image_page in enumerate(state.pages_as_base64_png_images):
-            logger.info(
-                f"Processing page {i + 1}/{len(state.pages_as_base64_png_images)}"
+    @classmethod
+    def continue_to_find_layout_items(cls, state: DocumentLayoutParsingState):
+        return [
+            Send(
+                "find_layout_items",
+                FindLayoutItemsInput(base64_png=base64_png, page_number=i),
             )
-            messages = [
-                f"Find and summarize all the relevant layout elements in this pdf page in the following format: "
-                f"{LayoutElements.model_json_schema()}. "
-                f"Tables should have at least two columns and at least two rows. "
-                f"The coordinates should overlap with each layout item.",
-                {"mime_type": "image/png", "data": base64_image_page},
-            ]
+            for i, base64_png in enumerate(state.pages_as_base64_png_images)
+        ]
 
-            result = self.model.generate_content(messages)
-            data = json.loads(result.text)
-            documents.extend(
-                [
-                    Document(
-                        page_content=x["summary"],
-                        metadata={
-                            "page_number": i,
-                            "element_type": x["element_type"],
-                        },
-                    )
-                    for x in data["layout_items"]
-                ]
-            )
-            logger.info(
-                f"Extracted {len(data['layout_items'])} layout elements from page {i + 1}."
-            )
+    def find_layout_items(self, state: FindLayoutItemsInput):
+        logger.info(f"Processing page {state.page_number + 1}")
+        messages = [
+            f"Find and summarize all the relevant layout elements in this pdf page in the following format: "
+            f"{LayoutElements.model_json_schema()}. "
+            f"Tables should have at least two columns and at least two rows. "
+            f"The coordinates should overlap with each layout item.",
+            {"mime_type": "image/png", "data": state.base64_png},
+        ]
 
-        logger.info(f"Total layout elements extracted: {len(documents)}")
+        result = self.model.generate_content(messages)
+        data = json.loads(result.text)
+        documents = [
+            Document(
+                page_content=x["summary"],
+                metadata={
+                    "page_number": state.page_number,
+                    "element_type": x["element_type"],
+                },
+            )
+            for x in data["layout_items"]
+        ]
+
+        logger.info(
+            f"Extracted {len(data['layout_items'])} layout elements from page {state.page_number + 1}."
+        )
+
         return {"documents": documents}
+
+    def build_agent(self):
+        builder = StateGraph(DocumentLayoutParsingState)
+        builder.add_node("get_images", self.get_images)
+        builder.add_node("find_layout_items", self.find_layout_items)
+
+        builder.add_edge(START, "get_images")
+        builder.add_conditional_edges("get_images", self.continue_to_find_layout_items)
+        builder.add_edge("find_layout_items", END)
+        self.graph = builder.compile()
 
 
 if __name__ == "__main__":
@@ -108,7 +125,11 @@ if __name__ == "__main__":
 
     result_node1 = agent.get_images(_state)
     _state.pages_as_base64_png_images = result_node1["pages_as_base64_png_images"]
-    result_node2 = agent.find_layout_items(_state)
+    result_node2 = agent.find_layout_items(
+        FindLayoutItemsInput(
+            base64_png=result_node1["pages_as_base64_png_images"][0], page_number=0
+        )
+    )
 
     for item in result_node2["documents"]:
         print(item.page_content)
