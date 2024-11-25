@@ -13,8 +13,8 @@ def test_load_document_success():
     state = DocumentLayoutParsingState(document_path=str(docs_path))
     agent = DocumentParsingAgent()
     result = agent.get_images(state)
-    assert "pages_as_base64_png_images" in result
-    assert len(result["pages_as_base64_png_images"]) > 0  # Expecting at least one page
+    assert "pages_as_base64_jpeg_images" in result
+    assert len(result["pages_as_base64_jpeg_images"]) > 0  # Expecting at least one page
 
 
 def test_extract_layout_elements_success():
@@ -23,10 +23,12 @@ def test_extract_layout_elements_success():
     state = DocumentLayoutParsingState(document_path=str(docs_path))
     agent = DocumentParsingAgent()
     result_images = agent.get_images(state)
-    state.pages_as_base64_png_images = result_images["pages_as_base64_png_images"]
+    state.pages_as_base64_jpeg_images = result_images["pages_as_base64_jpeg_images"]
     result = agent.find_layout_items(
         FindLayoutItemsInput(
-            base64_png=result_images["pages_as_base64_png_images"][0], page_number=0
+            base64_jpeg=result_images["pages_as_base64_jpeg_images"][0],
+            page_number=0,
+            document_path=state.document_path,
         )
     )
     assert len(result["documents"]) > 0  # Expecting at least one item
@@ -37,7 +39,6 @@ def test_document_parser_agent():
 
     state = DocumentLayoutParsingState(document_path=str(docs_path))
     agent = DocumentParsingAgent()
-    agent.build_agent()
 
     result = agent.graph.invoke(state)
 

@@ -11,7 +11,7 @@ def extract_images_from_pdf(pdf_path: str):
     with open(pdf_path, "rb") as f:
         with tempfile.TemporaryDirectory() as path:
             logger.info(f"Converting PDF to images using temporary directory: {path}")
-            images = convert_from_bytes(f.read(), output_folder=path, fmt="png")
+            images = convert_from_bytes(f.read(), output_folder=path, fmt="jpeg")
             logger.info(f"Extracted {len(images)} images from the PDF.")
             return images
 

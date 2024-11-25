@@ -15,3 +15,4 @@ pypdf~=5.1.0
 pillow~=11.0.0
 google-generativeai~=0.8.3
 grpcio==1.60.1
+langchain_chroma~=0.1.4

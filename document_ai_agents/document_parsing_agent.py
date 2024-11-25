@@ -10,7 +10,7 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from document_ai_agents.document_utils import extract_images_from_pdf
-from document_ai_agents.image_utils import pil_image_to_base64_png
+from document_ai_agents.image_utils import pil_image_to_base64_jpeg
 from document_ai_agents.logger import logger
 from document_ai_agents.schema_utils import prepare_schema_for_gemini
 
@@ -30,12 +30,13 @@ class LayoutElements(BaseModel):
 
 class DocumentLayoutParsingState(BaseModel):
     document_path: str
-    pages_as_base64_png_images: list[str] = []
+    pages_as_base64_jpeg_images: list[str] = []
     documents: Annotated[list[Document], operator.add] = []
 
 
 class FindLayoutItemsInput(BaseModel):
-    base64_png: str
+    document_path: str
+    base64_jpeg: str
     page_number: int
 
 
@@ -53,6 +54,7 @@ class DocumentParsingAgent:
             },
         )
         self.graph = None
+        self.build_agent()
 
     @classmethod
     def get_images(cls, state: DocumentLayoutParsingState):
@@ -62,18 +64,22 @@ class DocumentParsingAgent:
 
         assert images, "No images extracted"
 
-        pages_as_base64_png_images = [pil_image_to_base64_png(x) for x in images]
+        pages_as_base64_jpeg_images = [pil_image_to_base64_jpeg(x) for x in images]
 
-        return {"pages_as_base64_png_images": pages_as_base64_png_images}
+        return {"pages_as_base64_jpeg_images": pages_as_base64_jpeg_images}
 
     @classmethod
     def continue_to_find_layout_items(cls, state: DocumentLayoutParsingState):
         return [
             Send(
                 "find_layout_items",
-                FindLayoutItemsInput(base64_png=base64_png, page_number=i),
+                FindLayoutItemsInput(
+                    base64_jpeg=base64_jpeg,
+                    page_number=i,
+                    document_path=state.document_path,
+                ),
             )
-            for i, base64_png in enumerate(state.pages_as_base64_png_images)
+            for i, base64_jpeg in enumerate(state.pages_as_base64_jpeg_images)
         ]
 
     def find_layout_items(self, state: FindLayoutItemsInput):
@@ -83,7 +89,7 @@ class DocumentParsingAgent:
             f"{LayoutElements.model_json_schema()}. "
             f"Tables should have at least two columns and at least two rows. "
             f"The coordinates should overlap with each layout item.",
-            {"mime_type": "image/png", "data": state.base64_png},
+            {"mime_type": "image/jpeg", "data": state.base64_jpeg},
         ]
 
         result = self.model.generate_content(messages)
@@ -94,6 +100,7 @@ class DocumentParsingAgent:
                 metadata={
                     "page_number": state.page_number,
                     "element_type": x["element_type"],
+                    "document_path": state.document_path,
                 },
             )
             for x in data["layout_items"]
@@ -124,10 +131,12 @@ if __name__ == "__main__":
     agent = DocumentParsingAgent()
 
     result_node1 = agent.get_images(_state)
-    _state.pages_as_base64_png_images = result_node1["pages_as_base64_png_images"]
+    _state.pages_as_base64_jpeg_images = result_node1["pages_as_base64_jpeg_images"]
     result_node2 = agent.find_layout_items(
         FindLayoutItemsInput(
-            base64_png=result_node1["pages_as_base64_png_images"][0], page_number=0
+            base64_jpeg=result_node1["pages_as_base64_jpeg_images"][0],
+            page_number=0,
+            document_path=str(_state.document_path),
         )
     )
 
