@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 import google.generativeai as genai
+from langchain_core.documents import Document
 from pydantic import BaseModel, Field
 
 from document_ai_agents.document_utils import extract_images_from_pdf
@@ -15,31 +16,39 @@ class DetectedLayoutItem(BaseModel):
     element_type: Literal["Table", "Figure", "Image", "Text-block"] = Field(
         ...,
         description="Type of detected Item. Find Tables, figures and images. Use Text-Block for everything else, "
-        "be as exhaustive as possible.",
+        "be as exhaustive as possible. Return 10 Items at most.",
     )
     summary: str = Field(..., description="A detailed description of the layout Item.")
-
-
-class LayoutItem(DetectedLayoutItem):
-    page_number: int
 
 
 class LayoutElements(BaseModel):
     layout_items: list[DetectedLayoutItem] = []
 
 
-layout_elements_schema = prepare_schema_for_gemini(LayoutElements)
-
-
 class DocumentLayoutParsingState(BaseModel):
     document_path: str
     pages_as_base64_png_images: list[str] = []
-    layout_items: list[LayoutItem] = []
+    documents: list[Document] = []
+
+
+class FindLayoutItems(BaseModel):
+    base64_png: str
+    page_number: int
 
 
 class DocumentParsingAgent:
     def __init__(self, model_name="gemini-1.5-flash-002"):
+        layout_elements_schema = prepare_schema_for_gemini(LayoutElements)
+
+        logger.info(f"Using Gemini model with schema: {layout_elements_schema}")
         self.model_name = model_name
+        self.model = genai.GenerativeModel(
+            self.model_name,
+            generation_config={
+                "response_mime_type": "application/json",
+                "response_schema": layout_elements_schema,
+            },
+        )
         self.agent = None
 
     @classmethod
@@ -55,16 +64,7 @@ class DocumentParsingAgent:
         return {"pages_as_base64_png_images": pages_as_base64_png_images}
 
     def find_layout_items(self, state: DocumentLayoutParsingState):
-        model = genai.GenerativeModel(
-            self.model_name,
-            generation_config={
-                "response_mime_type": "application/json",
-                "response_schema": layout_elements_schema,
-            },
-        )
-        logger.info(f"Using Gemini model with schema: {layout_elements_schema}")
-
-        layout_items = []
+        documents = []
         for i, base64_image_page in enumerate(state.pages_as_base64_png_images):
             logger.info(
                 f"Processing page {i + 1}/{len(state.pages_as_base64_png_images)}"
@@ -77,14 +77,16 @@ class DocumentParsingAgent:
                 {"mime_type": "image/png", "data": base64_image_page},
             ]
 
-            result = model.generate_content(messages)
+            result = self.model.generate_content(messages)
             data = json.loads(result.text)
-            layout_items.extend(
+            documents.extend(
                 [
-                    LayoutItem(
-                        summary=x["summary"],
-                        page_number=i,
-                        element_type=x["element_type"],
+                    Document(
+                        page_content=x["summary"],
+                        metadata={
+                            "page_number": i,
+                            "element_type": x["element_type"],
+                        },
                     )
                     for x in data["layout_items"]
                 ]
@@ -93,8 +95,8 @@ class DocumentParsingAgent:
                 f"Extracted {len(data['layout_items'])} layout elements from page {i + 1}."
             )
 
-        logger.info(f"Total layout elements extracted: {len(layout_items)}")
-        return {"layout_elements": layout_items}
+        logger.info(f"Total layout elements extracted: {len(documents)}")
+        return {"documents": documents}
 
 
 if __name__ == "__main__":
@@ -108,5 +110,6 @@ if __name__ == "__main__":
     _state.pages_as_base64_png_images = result_node1["pages_as_base64_png_images"]
     result_node2 = agent.find_layout_items(_state)
 
-    for item in result_node2["layout_elements"]:
-        print(item)
+    for item in result_node2["documents"]:
+        print(item.page_content)
+        print(item.metadata["element_type"])

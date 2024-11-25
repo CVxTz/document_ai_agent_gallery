@@ -24,4 +24,4 @@ def test_extract_layout_elements_success():
     result_images = agent.get_images(state)
     state.pages_as_base64_png_images = result_images["pages_as_base64_png_images"]
     result = agent.find_layout_items(state)
-    assert len(result["layout_elements"]) > 0  # Expecting at least one item
+    assert len(result["documents"]) > 0  # Expecting at least one item
