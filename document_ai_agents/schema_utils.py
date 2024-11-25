@@ -1,3 +1,6 @@
+from pydantic import BaseModel
+
+
 def replace_value_in_dict(item, original_schema):
     # Source: https://github.com/pydantic/pydantic/issues/889
     if isinstance(item, list):
@@ -30,3 +33,15 @@ def delete_keys_recursive(d, key_to_delete):
         # Recursively process all items in the list
         for item in d:
             delete_keys_recursive(item, key_to_delete)
+
+
+def prepare_schema_for_gemini(model: type(BaseModel)):
+    schema = model.model_json_schema()
+
+    schema = replace_value_in_dict(schema.copy(), schema.copy())
+    if "$defs" in schema:
+        del schema["$defs"]
+    delete_keys_recursive(schema, key_to_delete="title")
+    delete_keys_recursive(schema, key_to_delete="default")
+
+    return schema
