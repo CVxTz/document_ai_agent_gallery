@@ -1,4 +1,3 @@
-import concurrent.futures
 import json
 import operator
 from pathlib import Path
@@ -55,7 +54,6 @@ class DocumentParsingAgent:
             },
         )
         self.graph = None
-        self.threadpool = concurrent.futures.ThreadPoolExecutor(max_workers=8)
         self.build_agent()
 
     @classmethod
@@ -114,29 +112,14 @@ class DocumentParsingAgent:
 
         return {"documents": documents}
 
-    def grouped_find_layout_items(self, state: DocumentLayoutParsingState):
-        documents = []
-
-        for i, base64_jpeg in enumerate(state.pages_as_base64_jpeg_images):
-            result = self.find_layout_items(
-                FindLayoutItemsInput(
-                    document_path=state.document_path,
-                    base64_jpeg=base64_jpeg,
-                    page_number=i,
-                )
-            )
-            documents.extend(result["documents"])
-
-        return {"documents": documents}
-
     def build_agent(self):
         builder = StateGraph(DocumentLayoutParsingState)
         builder.add_node("get_images", self.get_images)
-        builder.add_node("grouped_find_layout_items", self.grouped_find_layout_items)
+        builder.add_node("find_layout_items", self.find_layout_items)
 
         builder.add_edge(START, "get_images")
-        builder.add_edge("get_images", "grouped_find_layout_items")
-        builder.add_edge("grouped_find_layout_items", END)
+        builder.add_conditional_edges("get_images", self.continue_to_find_layout_items)
+        builder.add_edge("find_layout_items", END)
         self.graph = builder.compile()
 
 

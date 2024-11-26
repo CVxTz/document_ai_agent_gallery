@@ -8,4 +8,4 @@ if (Path(__file__).parents[1] / ".env").is_file():
     load_dotenv(dotenv_path=Path(__file__).parents[1] / ".env")
 
 
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"], transport="rest")
