@@ -28,4 +28,4 @@ class InterceptHandler(logging.Handler):
         )
 
 
-logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+logging.basicConfig(handlers=[InterceptHandler()], level=logging.DEBUG, force=True)
