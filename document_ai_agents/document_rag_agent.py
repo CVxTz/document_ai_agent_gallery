@@ -28,6 +28,7 @@ class DocumentRAGState(BaseModel):
     document_path: str
     pages_as_base64_jpeg_images: list[str]
     documents: list[Document]
+    relevant_documents: list[Document] = []
     response: Optional[str] = None
 
 
@@ -81,7 +82,7 @@ class DocumentRAGAgent:
 
         response = self.model.generate_content(messages)
 
-        return {"response": response.text}
+        return {"response": response.text, "relevant_documents": relevant_documents}
 
     def build_agent(self):
         builder = StateGraph(DocumentRAGState)
