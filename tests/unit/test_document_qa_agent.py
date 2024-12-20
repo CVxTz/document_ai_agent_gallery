@@ -21,7 +21,7 @@ def test_document_qa_agent():
     result = agent.graph.invoke(state2)
 
     assert result["answer_cot"].answer == "0.708"
-    assert result["verification_cot"].verified
+    assert result["verification_cot"].entailment == "Yes"
 
 
 def test_document_qa_agent_text():
