@@ -7,7 +7,7 @@ from document_ai_agents.document_parsing_agent import (
 from document_ai_agents.document_rag_agent import DocumentRAGAgent, DocumentRAGState
 
 
-def test_load_document_success():
+def test_rag_agent():
     state1 = DocumentLayoutParsingState(
         document_path=str(Path(__file__).parents[2] / "data" / "docs.pdf")
     )
@@ -27,4 +27,4 @@ def test_load_document_success():
 
     result2 = agent2.graph.invoke(state2)
 
-    assert "acknowledged" in result2["response"]
+    assert "Manoj" in result2["response"]
