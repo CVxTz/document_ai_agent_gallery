@@ -4,10 +4,10 @@ from functools import lru_cache
 from typing import Any
 
 import wikipedia
-from google.generativeai.protos import FunctionDeclaration
 from pydantic import BaseModel, Field
 
 from document_ai_agents.logger import logger
+from document_ai_agents.schema_utils import prepare_schema_for_gemini
 
 wikipedia.page = lru_cache(maxsize=1024)(
     wikipedia.page
@@ -47,15 +47,21 @@ class Tool(ABC):
         tool_call_args = json.loads(json_tool_call)
         return self.input_model(**tool_call_args)
 
-    def tool_schema_gemini(self) -> FunctionDeclaration:
-        return FunctionDeclaration(
-            name=self.name,
-            description=self.description_and_schema,
-            parameters={
-                "properties": self.input_model.model_json_schema()["properties"],
-                "required": self.input_model.model_json_schema()["required"],
-            },
-        )
+    def validate_dict(self, tool_call_args: dict) -> type(BaseModel):
+        """
+        Returns an instance of self.input_model
+        :param tool_call_args: dict
+        :return: an instance of self.input_model
+        """
+        return self.input_model(**tool_call_args)
+
+    def tool_schema_gemini(self) -> dict:
+        gemini_schema = prepare_schema_for_gemini(self.input_model)
+        return {
+            "name": self.name,
+            "description": self.description_and_schema,
+            "parameters": gemini_schema,
+        }
 
 
 # Wikipedia Search Tool
@@ -124,6 +130,9 @@ if __name__ == "__main__":
 
     model = genai.GenerativeModel(
         "gemini-1.5-flash-002",
+        tools=[{"function_declarations": [wikipedia_tool.tool_schema_gemini()]}],
     )
 
+    response = model.generate_content("What is Stevia ?")
 
+    print(response)
