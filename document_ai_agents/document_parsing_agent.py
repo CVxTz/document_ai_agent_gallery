@@ -25,13 +25,13 @@ class DetectedLayoutItem(BaseModel):
 
 
 class LayoutElements(BaseModel):
-    layout_items: list[DetectedLayoutItem] = []
+    layout_items: list[DetectedLayoutItem] = Field(default_factory=list)
 
 
 class DocumentLayoutParsingState(BaseModel):
     document_path: str
-    pages_as_base64_jpeg_images: list[str] = []
-    documents: Annotated[list[Document], operator.add] = []
+    pages_as_base64_jpeg_images: list[str] = Field(default_factory=list)
+    documents: Annotated[list[Document], operator.add] = Field(default_factory=list)
 
 
 class FindLayoutItemsInput(BaseModel):
