@@ -19,3 +19,4 @@ langchain_chroma~=0.1.4
 jupyterlab~=4.3.1
 wikipedia~=1.4.0
 duckduckgo-search~=7.2.0
+strip-tags ~=0.5.1

@@ -6,7 +6,12 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from document_ai_agents.logger import logger
-from document_ai_agents.tools import get_wikipedia_page, search_wikipedia
+from document_ai_agents.tools import (
+    get_page_content,
+    get_wikipedia_page,
+    search_duck_duck_go,
+    search_wikipedia,
+)
 
 
 class AgentState(BaseModel):
@@ -89,7 +94,14 @@ class ToolCallAgent:
 
 
 if __name__ == "__main__":
-    agent = ToolCallAgent(tools=[get_wikipedia_page, search_wikipedia])
+    agent = ToolCallAgent(
+        tools=[
+            get_wikipedia_page,
+            search_wikipedia,
+            search_duck_duck_go,
+            get_page_content,
+        ]
+    )
 
     initial_state = AgentState(
         messages=[
@@ -97,7 +109,7 @@ if __name__ == "__main__":
                 "role": "user",
                 "parts": [
                     "What is the number and season of the south park episode where they get time traveling immigrants?"
-                    "Who was the director of that episode and where/when was he born ?"
+                    "Who was the director of that episode? Where and when was he born ? Give me his wikipedia page link."
                 ],
             }
         ],
@@ -109,3 +121,31 @@ if __name__ == "__main__":
         print(message["role"])
         for _part in message["parts"]:
             print(_part)
+
+    print(
+        output_state["messages"][-1]["parts"][-1]["text"]
+    )  # Trey Parker was born on **October 19, 1969**, in Conifer, Colorado, U.S.
+
+
+
+    # initial_state = AgentState(
+    #     messages=[
+    #         {
+    #             "role": "user",
+    #             "parts": [
+    #                 "Is puffer fish poisonous ? if so, explain why and list some other poisonous (not venomous) fish. Don't cite Wikipedia only."
+    #             ],
+    #         }
+    #     ],
+    # )
+    #
+    # output_state = agent.graph.invoke(initial_state)
+    #
+    # for message in output_state["messages"]:
+    #     print(message["role"])
+    #     for _part in message["parts"]:
+    #         print(_part)
+    #
+    # print(
+    #     output_state["messages"][-1]["parts"][-1]["text"]
+    # )
