@@ -95,6 +95,7 @@ if __name__ == "__main__":
                 "role": "user",
                 "parts": [
                     "What is the number and season of the south park episode where they get time traveling immigrants?"
+                    " Give me the full content of the page of this episode if you can find it."
                 ],
             }
         ],
