@@ -2,6 +2,8 @@ from operator import add
 from typing import Annotated, Callable
 
 import google.generativeai as genai
+from google.api_core import retry
+from google.generativeai.types import RequestOptions
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
@@ -39,6 +41,9 @@ class ToolCallAgent:
     def call_llm(self, state: AgentState):
         response = self.model.generate_content(
             state.messages,
+            request_options=RequestOptions(
+                retry=retry.Retry(initial=10, multiplier=2, maximum=60, timeout=300)
+            ),
         )
 
         return {
@@ -125,8 +130,6 @@ if __name__ == "__main__":
     print(
         output_state["messages"][-1]["parts"][-1]["text"]
     )  # Trey Parker was born on **October 19, 1969**, in Conifer, Colorado, U.S.
-
-
 
     # initial_state = AgentState(
     #     messages=[
