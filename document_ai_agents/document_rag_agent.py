@@ -7,7 +7,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from document_ai_agents.logger import logger
 
@@ -28,7 +28,7 @@ class DocumentRAGState(BaseModel):
     document_path: str
     pages_as_base64_jpeg_images: list[str]
     documents: list[Document]
-    relevant_documents: list[Document] = []
+    relevant_documents: list[Document] = Field(default_factory=list)
     response: Optional[str] = None
 
 
