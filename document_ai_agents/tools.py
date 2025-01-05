@@ -1,76 +1,15 @@
-import json
-from abc import ABC, abstractmethod
 from functools import lru_cache
-from typing import Any
 
 import wikipedia
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from document_ai_agents.logger import logger
-from document_ai_agents.schema_utils import prepare_schema_for_gemini
 
 wikipedia.page = lru_cache(maxsize=1024)(
     wikipedia.page
 )  # To avoid calling the api twice with the same input
 
-
-class Tool(ABC):
-    def __init__(self, name: str, description: str):
-        self.name = name
-        self.description = description
-        self.description_and_schema = (
-            self.description
-            + f"\nTakes as input the following object: {json.dumps(self.input_model.model_json_schema(), indent=4)} "
-            + f"\nReturns the following object: {json.dumps(self.output_model.model_json_schema(), indent=4)}"
-        )
-
-    @abstractmethod
-    def __call__(self, input_data: type(BaseModel)) -> Any:
-        pass
-
-    @property
-    @abstractmethod
-    def input_model(self) -> type(BaseModel):
-        pass
-
-    @property
-    @abstractmethod
-    def output_model(self) -> type(BaseModel):
-        pass
-
-    def validate_json(self, json_tool_call: str) -> type(BaseModel):
-        """
-        Returns an instance of self.input_model
-        :param json_tool_call: str json
-        :return: an instance of self.input_model
-        """
-        tool_call_args = json.loads(json_tool_call)
-        return self.input_model(**tool_call_args)
-
-    def validate_dict(self, tool_call_args: dict) -> type(BaseModel):
-        """
-        Returns an instance of self.input_model
-        :param tool_call_args: dict
-        :return: an instance of self.input_model
-        """
-        return self.input_model(**tool_call_args)
-
-    def tool_schema_gemini(self) -> dict:
-        gemini_schema = prepare_schema_for_gemini(self.input_model)
-        return {
-            "name": self.name,
-            "description": self.description_and_schema,
-            "parameters": gemini_schema,
-        }
-
-
-# Wikipedia Search Tool
-
-
-class WikipediaSearchQuery(BaseModel):
-    search_query: str = Field(
-        description="Query to send to wikipedia search, should be short and similar to a wikipedia page title"
-    )
+# Search Wikipedia
 
 
 class PageSummary(BaseModel):
@@ -83,56 +22,76 @@ class WikipediaSearchResponse(BaseModel):
     page_summaries: list[PageSummary]
 
 
-class WikipediaSearchTool(Tool):
-    def __init__(self, lang="en", max_results=3):
-        super().__init__(
-            name="WikipediaSearchTool",
-            description="Searches through wikipedia pages. ",
+def search_wikipedia(search_query: str) -> WikipediaSearchResponse:
+    """
+    Searches through wikipedia pages.
+    :param search_query: Query to send to wikipedia search, should be short and similar to a wikipedia page title.
+    Search for one item at a time even if it means calling the tool multiple times.
+    :return:
+    """
+    max_results = 5
+
+    titles = wikipedia.search(search_query, results=max_results)
+    page_summaries = []
+    for title in titles[:max_results]:
+        try:
+            page = wikipedia.page(title=title, auto_suggest=False)
+            page_summary = PageSummary(
+                page_title=page.title, page_summary=page.summary, page_url=page.url
+            )
+            page_summaries.append(page_summary)
+        except (wikipedia.DisambiguationError, wikipedia.PageError):
+            logger.warning(f"Error getting the page {title=}")
+
+    return WikipediaSearchResponse(page_summaries=page_summaries)
+
+
+# Get full page
+
+
+class FullPage(BaseModel):
+    page_title: str
+    page_url: str
+    content: str
+
+
+def get_wikipedia_page(page_title: str, max_text_size: int = 16_000):
+    """
+    Gets full content of a wikipedia page
+    :param page_title: Make sure this page exists by calling the tool "search_wikipedia" first.
+    :param max_text_size: defaults to 16000
+    :return:
+    """
+    try:
+        page = wikipedia.page(title=page_title, auto_suggest=False)
+        full_page = FullPage(
+            page_title=page.title,
+            page_url=page.url,
+            content=page.content[:max_text_size],
         )
-        self.lang = lang
-        self.max_results = max_results
-        wikipedia.set_lang(self.lang)
+    except (wikipedia.DisambiguationError, wikipedia.PageError):
+        logger.warning(f"Error getting the page {page_title=}")
+        full_page = FullPage(
+            page_title=page_title,
+            page_url="",
+            content="",
+        )
 
-    def __call__(self, input_data: WikipediaSearchQuery) -> WikipediaSearchResponse:
-        titles = wikipedia.search(input_data.search_query, results=self.max_results)
-        page_summaries = []
-        for title in titles[: self.max_results]:
-            try:
-                page = wikipedia.page(title=title, auto_suggest=False)
-                page_summary = PageSummary(
-                    page_title=page.title, page_summary=page.summary, page_url=page.url
-                )
-                page_summaries.append(page_summary)
-            except (wikipedia.DisambiguationError, wikipedia.PageError):
-                logger.exception(f"Error getting the page {title=}")
-
-        return WikipediaSearchResponse(page_summaries=page_summaries)
-
-    @property
-    def input_model(self) -> type(WikipediaSearchQuery):
-        return WikipediaSearchQuery
-
-    @property
-    def output_model(self) -> type(WikipediaSearchResponse):
-        return WikipediaSearchResponse
+    return full_page
 
 
 if __name__ == "__main__":
     import google.generativeai as genai
 
-    wikipedia_tool = WikipediaSearchTool()
-
-    result = wikipedia_tool(WikipediaSearchQuery(search_query="Stevia"))
-
-    print(result)
-    print(WikipediaSearchQuery.model_json_schema())
-    print(wikipedia_tool.tool_schema_gemini())
+    result = search_wikipedia(search_query="Stevia")
 
     model = genai.GenerativeModel(
         "gemini-1.5-flash-002",
-        tools=[{"function_declarations": [wikipedia_tool.tool_schema_gemini()]}],
+        tools=[search_wikipedia, get_wikipedia_page],
     )
 
     response = model.generate_content("What is Stevia ?")
 
-    print(response)
+    print(response.candidates[0].content)
+    print(type(response.candidates[0].content))
+    print(type(response.candidates[0].content).to_dict(response.candidates[0].content))

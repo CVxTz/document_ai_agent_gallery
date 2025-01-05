@@ -1,17 +1,7 @@
-from pydantic import BaseModel
-
-from document_ai_agents.tools import WikipediaSearchTool
+from document_ai_agents.tools import WikipediaSearchResponse, search_wikipedia
 
 
 def test_wikipedia_search_tool():
-    wikipedia_search_tool = WikipediaSearchTool()
+    result = search_wikipedia(search_query="Stevia")
 
-    tool_call_json = '{"search_query": "Stevia"}'
-    query = wikipedia_search_tool.validate_json(tool_call_json)
-
-    assert isinstance(query, wikipedia_search_tool.input_model)
-
-    result = wikipedia_search_tool(query)
-
-    assert isinstance(result, BaseModel)
-    assert isinstance(result, wikipedia_search_tool.output_model)
+    assert isinstance(result, WikipediaSearchResponse)

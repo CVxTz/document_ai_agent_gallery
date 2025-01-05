@@ -1,136 +1,108 @@
-from typing import Optional
+from operator import add
+from typing import Annotated, Callable
 
 import google.generativeai as genai
-from chromadb.api.types import EmbeddingFunction
-from chromadb.utils import embedding_functions
-from langchain_chroma import Chroma
-from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from document_ai_agents.logger import logger
+from document_ai_agents.tools import get_wikipedia_page, search_wikipedia
 
 
-class ChromaEmbeddingsAdapter(Embeddings):
-    def __init__(self, ef: EmbeddingFunction):
-        self.ef = ef
-
-    def embed_documents(self, texts):
-        return self.ef(texts)
-
-    def embed_query(self, query):
-        return self.ef([query])[0]
+class AgentState(BaseModel):
+    messages: Annotated[list, add] = Field(default_factory=list)
 
 
-class DocumentRAGState(BaseModel):
-    question: str
-    document_path: str
-    pages_as_base64_jpeg_images: list[str]
-    documents: list[Document]
-    relevant_documents: list[Document] = Field(default_factory=list)
-    response: Optional[str] = None
-
-
-class DocumentRAGAgent:
-    def __init__(self, model_name="gemini-1.5-flash-002", k=3):
+class ToolCallAgent:
+    def __init__(self, tools: list[Callable], model_name="gemini-2.0-flash-exp"):
         self.model_name = model_name
         self.model = genai.GenerativeModel(
             self.model_name,
+            tools=tools,
+            system_instruction="You are a helpful agent that has access to different tools. Use them to answer the "
+            "user's query if needed. Only use information from external sources that you can cite. "
+            "You can use multiple tools before giving the final answer. "
+            "If the tool response does not give an adequate response you can use the tools again with different inputs.",
         )
-        self.vector_store = Chroma(
-            collection_name="document-rag",
-            embedding_function=ChromaEmbeddingsAdapter(
-                embedding_functions.DefaultEmbeddingFunction()
-            ),
-        )
-        self.retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
-
+        self.tools = tools
+        self.tool_mapping = {tool.__name__: tool for tool in self.tools}
         self.graph = None
         self.build_agent()
 
-    def index_documents(self, state: DocumentRAGState):
-        assert state.documents, "Documents should have at least one element"
-
-        if self.vector_store.get(where={"document_path": state.document_path})["ids"]:
-            logger.info(
-                "Documents for this file are already indexed, exiting this node"
-            )
-
-        self.vector_store.add_documents(state.documents)
-
-    def answer_question(self, state: DocumentRAGState):
-        relevant_documents: list[Document] = self.retriever.invoke(state.question)
-
-        images = list(
-            set(
-                [
-                    state.pages_as_base64_jpeg_images[doc.metadata["page_number"]]
-                    for doc in relevant_documents
-                ]
-            )
-        )  # Avoid duplicates
-
-        logger.info(f"Responding to question {state.question}")
-        messages = (
-            [{"mime_type": "image/jpeg", "data": base64_jpeg} for base64_jpeg in images]
-            + [doc.page_content for doc in relevant_documents]
-            + [
-                f"Answer this question using the context images and text elements only: {state.question}",
-            ]
+    def call_llm(self, state: AgentState):
+        response = self.model.generate_content(
+            state.messages,
         )
 
-        response = self.model.generate_content(messages)
+        return {
+            "messages": [
+                type(response.candidates[0].content).to_dict(
+                    response.candidates[0].content
+                )
+            ]
+        }
 
-        return {"response": response.text, "relevant_documents": relevant_documents}
+    def use_tool(self, state: AgentState):
+        assert any("function_call" in part for part in state.messages[-1]["parts"])
+
+        tool_result_parts = []
+
+        for part in state.messages[-1]["parts"]:
+            if "function_call" in part:
+                name = part["function_call"]["name"]
+                func = self.tool_mapping[name]
+                result = func(**part["function_call"]["args"])
+                tool_result_parts.append(
+                    {
+                        "function_response": {
+                            "name": name,
+                            "response": result.model_dump(mode="json"),
+                        }
+                    }
+                )
+
+        return {"messages": [{"role": "tool", "parts": tool_result_parts}]}
+
+    @staticmethod
+    def should_we_stop(state: AgentState) -> str:
+        logger.debug(
+            f"Entering should_we_stop function. Current message: {state.messages[-1]}"
+        )  # Added log
+        if any("function_call" in part for part in state.messages[-1]["parts"]):
+            logger.debug(f"Calling tools: {state.messages[-1]['parts']}")
+            return "use_tool"
+        else:
+            logger.debug("Ending agent invocation")
+            return END
 
     def build_agent(self):
-        builder = StateGraph(DocumentRAGState)
-        builder.add_node("index_documents", self.index_documents)
-        builder.add_node("answer_question", self.answer_question)
+        builder = StateGraph(AgentState)
+        builder.add_node("call_llm", self.call_llm)
+        builder.add_node("use_tool", self.use_tool)
 
-        builder.add_edge(START, "index_documents")
-        builder.add_edge("index_documents", "answer_question")
-        builder.add_edge("answer_question", END)
+        builder.add_edge(START, "call_llm")
+        builder.add_conditional_edges("call_llm", self.should_we_stop)
+        builder.add_edge("use_tool", "call_llm")
         self.graph = builder.compile()
 
 
 if __name__ == "__main__":
-    from pathlib import Path
+    agent = ToolCallAgent(tools=[get_wikipedia_page, search_wikipedia])
 
-    from document_ai_agents.document_parsing_agent import (
-        DocumentLayoutParsingState,
-        DocumentParsingAgent,
+    initial_state = AgentState(
+        messages=[
+            {
+                "role": "user",
+                "parts": [
+                    "What is the number and season of the south park episode where they get time traveling immigrants?"
+                ],
+            }
+        ],
     )
 
-    state1 = DocumentLayoutParsingState(
-        document_path=str(Path(__file__).parents[1] / "data" / "docs.pdf")
-    )
+    output_state = agent.graph.invoke(initial_state)
 
-    agent1 = DocumentParsingAgent()
-
-    result1 = agent1.graph.invoke(state1)
-
-    state2 = DocumentRAGState(
-        question="Who was acknowledge in this paper ?",
-        document_path=str(Path(__file__).parents[1] / "data" / "docs.pdf"),
-        pages_as_base64_jpeg_images=result1["pages_as_base64_jpeg_images"],
-        documents=result1["documents"],
-    )
-
-    agent2 = DocumentRAGAgent()
-
-    result2 = agent2.graph.invoke(state2)
-
-    print(result2["response"])
-
-    state3 = DocumentRAGState(
-        question="What is the macro average when fine tuning on publaynet using M-RCNN ? ",
-        document_path=str(Path(__file__).parents[1] / "data" / "docs.pdf"),
-        pages_as_base64_jpeg_images=result1["pages_as_base64_jpeg_images"],
-        documents=result1["documents"],
-    )
-
-    result3 = agent2.graph.invoke(state3)
-
-    print(result3["response"])
+    for message in output_state["messages"]:
+        print(message["role"])
+        for _part in message["parts"]:
+            print(_part)
