@@ -22,7 +22,9 @@ class ToolCallAgent:
             system_instruction="You are a helpful agent that has access to different tools. Use them to answer the "
             "user's query if needed. Only use information from external sources that you can cite. "
             "You can use multiple tools before giving the final answer. "
-            "If the tool response does not give an adequate response you can use the tools again with different inputs.",
+            "If the tool response does not give an adequate response you can use the tools again with different inputs."
+            "Only respond when you can cite the source from one of your tools."
+            "Only answer I don't know after you have exhausted all ways to use the tools to search for that information.",
         )
         self.tools = tools
         self.tool_mapping = {tool.__name__: tool for tool in self.tools}
@@ -95,7 +97,7 @@ if __name__ == "__main__":
                 "role": "user",
                 "parts": [
                     "What is the number and season of the south park episode where they get time traveling immigrants?"
-                    " Give me the full content of the page of this episode if you can find it."
+                    "Who was the director of that episode and where/when was he born ?"
                 ],
             }
         ],
